@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Efficient Self-Learning Neural Network Chatbot</title>
+    <script src="https://cdn.jsdelivr.net/npm/brain.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #eef2f3;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .chat-container {
+            width: 400px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            border-radius: 5px;
+            background-color: #fff;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .chat-box {
+            height: 300px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            padding: 5px;
+            background-color: #f9f9f9;
+        }
+
+        .chat-box div {
+            margin: 5px 0;
+        }
+
+        input[type="text"] {
+            width: 70%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        button {
+            width: 25%;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-box" id="chat-box"></div>
+        <input type="text" id="user-input" placeholder="Type a message..." />
+        <button onclick="sendMessage()">Send</button>
+    </div>
+
+    <script>
+        const net = new brain.NeuralNetwork({
+            hiddenLayers: [10, 10],
+            activation: 'sigmoid'
+        });
+
+        let trainingData = [];
+        let previousQuestion = "";
+
+        // Optimized dataset with additional knowledge and variety of responses
+        let dataset = [
+            { input: "what is ai", output: "AI stands for artificial intelligence. It's the simulation of human intelligence by machines." },
+            { input: "who invented computer", output: "The concept of the computer was invented by Charles Babbage." },
+            { input: "how is ai used", output: "AI is used in many fields such as healthcare, finance, and technology for automation and data analysis." },
+            { input: "how to create ai", output: "To create AI, you need a dataset, machine learning algorithms, and computing power." },
+            { input: "what is neural network", output: "A neural network is a system of algorithms that mimic human brain functions to recognize patterns." }
+        ];
+
+        // Load training data from localStorage
+        function loadTrainingData() {
+            const storedData = localStorage.getItem('chatbotTrainingData');
+            if (storedData) {
+                trainingData = JSON.parse(storedData);
+            } else {
+                // Convert dataset into training format
+                dataset.forEach(entry => {
+                    const normalizedInput = normalizeInput(entry.input);
+                    trainingData.push({
+                        input: normalizedInput,
+                        output: createOutputMap(entry.output)
+                    });
+                });
+                saveTrainingData();
+            }
+        }
+
+        // Normalize the input for the neural network
+        function normalizeInput(input) {
+            const words = input.toLowerCase().split(' ');
+            const uniqueWords = [...new Set(words)];
+            const normalized = {};
+            uniqueWords.forEach(word => normalized[word] = 1);
+            return normalized;
+        }
+
+        // Create output map from response
+        function createOutputMap(response) {
+            const outputMap = {};
+            const words = response.toLowerCase().split(' ');
+            words.forEach(word => outputMap[word] = 1);
+            return outputMap;
+        }
+
+        // Train the neural network more efficiently by adding only new data
+        function trainNetwork(newData) {
+            net.train([newData], {
+                iterations: 5000,  // Train only on new data
+                errorThresh: 0.01
+            });
+        }
+
+        // Save the training data to local storage
+        function saveTrainingData() {
+            localStorage.setItem('chatbotTrainingData', JSON.stringify(trainingData));
+        }
+
+        // Function to dynamically generate an answer from learned data
+        function getResponse(output) {
+            const outputWords = Object.keys(output).filter(key => output[key] > 0.5);
+            const combinedResponse = outputWords.join(' ');
+
+            if (combinedResponse.trim() === "") {
+                return "I'm still learning. Can you help me understand?";
+            }
+
+            return combinedResponse;
+        }
+
+        // Send message and get the bot's response
+        function sendMessage() {
+            const input = document.getElementById("user-input").value.trim();
+            if (input === "") return;
+
+            const timestamp = new Date().toLocaleTimeString();
+            addMessage("You: " + input, timestamp);
+            document.getElementById("user-input").value = "";
+
+            const normalizedInput = normalizeInput(input);
+            const output = net.run(normalizedInput);
+            let botResponse = getResponse(output);
+
+            // If bot doesn't know the answer, attempt to generate it dynamically
+            if (botResponse === "I'm still learning. Can you help me understand?") {
+                botResponse = synthesizeResponse(input);
+            }
+
+            addMessage("Bot: " + botResponse, timestamp);
+
+            // Add new input and response to training data
+            addNewTrainingData(input, botResponse);
+        }
+
+        // Dynamically synthesize a response by combining parts of the dataset
+        function synthesizeResponse(input) {
+            const relatedEntries = dataset.filter(entry => entry.input.includes(input.split(' ')[0]));
+            if (relatedEntries.length > 0) {
+                // Combine related responses into one
+                let responseParts = relatedEntries.map(entry => entry.output.split(' ')).flat();
+                responseParts = [...new Set(responseParts)].slice(0, 20);  // Limit response length
+                return responseParts.join(' ');
+            }
+
+            return "I'm still learning. Can you help me understand more?";
+        }
+
+        // Add new training data and retrain the network with the new input and response
+        function addNewTrainingData(input, response) {
+            const normalizedInput = normalizeInput(input);
+            const outputMap = createOutputMap(response);
+
+            const newData = {
+                input: normalizedInput,
+                output: outputMap
+            };
+
+            trainingData.push(newData);
+            saveTrainingData();
+            trainNetwork(newData);  // Only train on the new data
+        }
+
+        // Display messages in the chat
+        function addMessage(message, timestamp) {
+            const chatBox = document.getElementById("chat-box");
+            const messageDiv = document.createElement("div");
+            messageDiv.textContent = `${message} (${timestamp})`;
+            chatBox.appendChild(messageDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        // Load and train on initial dataset
+        loadTrainingData();
+    </script>
+</body>
+</html>
